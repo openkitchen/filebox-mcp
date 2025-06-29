@@ -1,0 +1,82 @@
+import { FastMCP } from "fastmcp";
+import { z } from "zod";
+import { FileBoxService } from "./filebox.js";
+
+/**
+ * Register all tools with the MCP server
+ * 
+ * @param server The FastMCP server instance
+ */
+export function registerTools(server: FastMCP) {
+  // Send message tool
+  server.addTool({
+    name: "filebox_send_message",
+    description: "Send a message from one agent to another",
+    parameters: z.object({
+      receiver_id: z.string().describe("ID of the receiving agent"),
+      msg_type: z.string().describe("Type of the message (e.g., BR, ER)"),
+      title: z.string().describe("Title of the message"),
+      content: z.string().describe("Content of the message"),
+      original_message_id: z.string().optional().describe("Original message ID if this is a reply")
+    }),
+    execute: async (params) => {
+      return await FileBoxService.sendMessage(
+        params.receiver_id, 
+        params.msg_type, 
+        params.title, 
+        params.content,
+        params.original_message_id
+      );
+    }
+  });
+
+  // List messages tool
+  server.addTool({
+    name: "filebox_list_messages",
+    description: "List messages in the current agent's mailbox",
+    parameters: z.object({
+      box_type: z.enum(["inbox", "outbox", "done", "cancel"]).describe("Type of the mailbox to list")
+    }),
+    execute: async (params) => {
+      const messages = await FileBoxService.listMessages(params.box_type);
+      return JSON.stringify(messages);
+    }
+  });
+
+  // Read message tool
+  server.addTool({
+    name: "filebox_read_message",
+    description: "Read a message from the current agent's mailbox",
+    parameters: z.object({
+      box_type: z.enum(["inbox", "outbox", "done", "cancel"]).describe("Type of the mailbox"),
+      filename: z.string().describe("Filename of the message to read")
+    }),
+    execute: async (params) => {
+      return await FileBoxService.readMessage(params.box_type, params.filename);
+    }
+  });
+
+  // Resolve message tool
+  server.addTool({
+    name: "filebox_resolve_message",
+    description: "Resolve a message in the current agent's inbox",
+    parameters: z.object({
+      filename: z.string().describe("Filename of the message to resolve")
+    }),
+    execute: async (params) => {
+      return await FileBoxService.resolveMessage(params.filename);
+    }
+  });
+
+  // Reject message tool
+  server.addTool({
+    name: "filebox_reject_message",
+    description: "Reject a message in the current agent's inbox",
+    parameters: z.object({
+      filename: z.string().describe("Filename of the message to reject")
+    }),
+    execute: async (params) => {
+      return await FileBoxService.rejectMessage(params.filename);
+    }
+  });
+}
