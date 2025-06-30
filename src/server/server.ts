@@ -12,7 +12,10 @@ async function startServer() {
     if (!fileboxConfig) {
       throw new Error("FILEBOX_CONFIG environment variable not set");
     }
-    FileBoxService.setConfig(JSON.parse(fileboxConfig));
+    const config = JSON.parse(fileboxConfig);
+    console.error(`[DEBUG] Server startup - current_agent_id: ${config.current_agent_id}`);
+    console.error(`[DEBUG] Server startup - config:`, JSON.stringify(config, null, 2));
+    const fileboxService = new FileBoxService(config);
 
     // Create a new FastMCP server instance
     const server = new FastMCP({
@@ -22,7 +25,7 @@ async function startServer() {
 
     // Register all resources, tools, and prompts
     registerResources(server);
-    registerTools(server);
+    registerTools(server, fileboxService);
     registerPrompts(server);
     
     // Log server information

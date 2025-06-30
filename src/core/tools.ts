@@ -6,8 +6,9 @@ import { FileBoxService } from "./filebox.js";
  * Register all tools with the MCP server
  * 
  * @param server The FastMCP server instance
+ * @param fileboxService The FileBoxService instance
  */
-export function registerTools(server: FastMCP) {
+export function registerTools(server: FastMCP, fileboxService: FileBoxService) {
   // Send message tool
   server.addTool({
     name: "filebox_send_message",
@@ -20,7 +21,7 @@ export function registerTools(server: FastMCP) {
       original_message_id: z.string().optional().describe("Original message ID if this is a reply")
     }),
     execute: async (params) => {
-      return await FileBoxService.sendMessage(
+      return await fileboxService.sendMessage(
         params.receiver_id, 
         params.msg_type, 
         params.title, 
@@ -38,7 +39,7 @@ export function registerTools(server: FastMCP) {
       box_type: z.enum(["inbox", "outbox", "done", "cancel"]).describe("Type of the mailbox to list")
     }),
     execute: async (params) => {
-      const messages = await FileBoxService.listMessages(params.box_type);
+      const messages = await fileboxService.listMessages(params.box_type);
       return JSON.stringify(messages);
     }
   });
@@ -52,7 +53,7 @@ export function registerTools(server: FastMCP) {
       filename: z.string().describe("Filename of the message to read")
     }),
     execute: async (params) => {
-      return await FileBoxService.readMessage(params.box_type, params.filename);
+      return await fileboxService.readMessage(params.box_type, params.filename);
     }
   });
 
@@ -64,7 +65,7 @@ export function registerTools(server: FastMCP) {
       filename: z.string().describe("Filename of the message to resolve")
     }),
     execute: async (params) => {
-      return await FileBoxService.resolveMessage(params.filename);
+      return await fileboxService.resolveMessage(params.filename);
     }
   });
 
@@ -76,7 +77,7 @@ export function registerTools(server: FastMCP) {
       filename: z.string().describe("Filename of the message to reject")
     }),
     execute: async (params) => {
-      return await FileBoxService.rejectMessage(params.filename);
+      return await fileboxService.rejectMessage(params.filename);
     }
   });
 }
