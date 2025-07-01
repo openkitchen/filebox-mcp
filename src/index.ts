@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 import { FastMCP } from "fastmcp";
 import startServer from "./server/server.js";
 import { ConfigService } from "./core/config.js";
