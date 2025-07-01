@@ -60,13 +60,30 @@ export class ConfigService {
     } else if (globalConfig) {
       // 如果只有全局配置，使用全局配置
       this.config = globalConfig;
-      this.currentAgent = this.getProjectName(); // 使用项目名作为当前代理
+      
+      // 4. 验证配置（提前验证，以便获取可用代理列表）
+      if (!this.config.agents || typeof this.config.agents !== 'object') {
+        throw new Error('Missing or invalid field: agents');
+      }
+      
+      // 尝试使用项目名，如果无效则使用第一个可用代理
+      const projectName = this.getProjectName();
+      if (projectName && this.config.agents[projectName]) {
+        this.currentAgent = projectName;
+      } else {
+        // 使用第一个可用的代理作为默认值
+        const availableAgents = Object.keys(this.config.agents);
+        if (availableAgents.length > 0) {
+          this.currentAgent = availableAgents[0];
+          console.error(`[ConfigService] Project name '${projectName}' not found in agents, using first available agent: ${this.currentAgent}`);
+        }
+      }
     } else {
       // 没有任何配置文件
       throw new Error(`No FileBox configuration found. Please create either '${this.globalConfigPath}' or '${this.projectConfigPath}' with valid JSON configuration.`);
     }
 
-    // 4. 验证配置
+    // 4. 验证配置（如果之前没有验证过）
     if (!this.config.agents || typeof this.config.agents !== 'object') {
       throw new Error('Missing or invalid field: agents');
     }
@@ -84,8 +101,17 @@ export class ConfigService {
 
   private getProjectName(): string {
     // 使用当前目录名作为项目名/代理名
-    const projectName = path.basename(process.cwd());
-    console.error(`[ConfigService] Using project name as agent ID: ${projectName}`);
+    const cwd = process.cwd();
+    const projectName = path.basename(cwd);
+    console.error(`[ConfigService] Current working directory: ${cwd}`);
+    console.error(`[ConfigService] Extracted project name: '${projectName}'`);
+    
+    // 如果项目名为空或者是根目录，返回 null
+    if (!projectName || projectName === '/' || projectName === '') {
+      console.error(`[ConfigService] Invalid project name, will use fallback`);
+      return '';
+    }
+    
     return projectName;
   }
 
