@@ -1,0 +1,9 @@
+# This file identifies which agent this project represents
+# Place this file in your project root directory
+{
+  "current_agent": "qa_agent",
+  "agents": {
+    "qa_agent": "docs/qa_agent",
+    "dev_agent": "docs/dev_agent"
+  }
+} 

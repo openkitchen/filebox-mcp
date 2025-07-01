@@ -3,19 +3,13 @@ import { registerResources } from "../core/resources.js";
 import { registerTools } from "../core/tools.js";
 import { registerPrompts } from "../core/prompts.js";
 import { FileBoxService } from "../core/filebox.js";
+import { ConfigService } from "../core/config.js";
+import { AgentService } from "../core/agent.js";
 
 // Create and start the MCP server
-async function startServer() {
+async function startServer(configService: ConfigService, agentService: AgentService) {
   try {
-    // Load config from environment variable
-    const fileboxConfig = process.env.FILEBOX_CONFIG;
-    if (!fileboxConfig) {
-      throw new Error("FILEBOX_CONFIG environment variable not set");
-    }
-    const config = JSON.parse(fileboxConfig);
-    console.error(`[DEBUG] Server startup - current_agent_id: ${config.current_agent_id}`);
-    console.error(`[DEBUG] Server startup - config:`, JSON.stringify(config, null, 2));
-    const fileboxService = new FileBoxService(config);
+    const fileboxService = new FileBoxService(configService, agentService);
 
     // Create a new FastMCP server instance
     const server = new FastMCP({

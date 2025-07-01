@@ -3,32 +3,84 @@
 const fs = require('fs').promises;
 const path = require('path');
 
-// Mock config
-const config = {
-    current_agent_id: "qa_agent",
-    agents: {
-        qa_agent: {
-            mailbox_path: "/tmp/qa_agent_mailbox"
-        },
-        dev_agent: {
-            mailbox_path: "/tmp/dev_agent_mailbox"
+// Mock test environment
+const testDir = '/tmp/filebox_test';
+
+// Create test environment
+async function setupTestEnvironment() {
+    // Create test directories
+    await fs.mkdir(testDir, { recursive: true });
+    await fs.mkdir(path.join(testDir, 'qa_repo'), { recursive: true });
+    await fs.mkdir(path.join(testDir, 'dev_repo'), { recursive: true });
+
+    // Create mailbox directories for both agents
+    for (const agent of ['qa_repo', 'dev_repo']) {
+        for (const box of ['inbox', 'outbox', 'done', 'cancel']) {
+            await fs.mkdir(path.join(testDir, agent, 'docs', 'mailbox', box), { recursive: true });
         }
     }
-};
+
+    // Create .filebox config files for both agents
+    const qaConfig = {
+        current_agent: "qa_agent",
+        agents: {
+            qa_agent: path.join(testDir, 'qa_repo'),
+            dev_agent: path.join(testDir, 'dev_repo')
+        }
+    };
+
+    const devConfig = {
+        current_agent: "dev_agent", 
+        agents: {
+            qa_agent: path.join(testDir, 'qa_repo'),
+            dev_agent: path.join(testDir, 'dev_repo')
+        }
+    };
+
+    await fs.writeFile(
+        path.join(testDir, 'qa_repo', '.filebox'),
+        JSON.stringify(qaConfig, null, 2)
+    );
+
+    await fs.writeFile(
+        path.join(testDir, 'dev_repo', '.filebox'),
+        JSON.stringify(devConfig, null, 2)
+    );
+}
+
+async function cleanupTestEnvironment() {
+    try {
+        // Remove test directories
+        await fs.rm(testDir, { recursive: true, force: true });
+    } catch (error) {
+        console.error("Cleanup error (non-fatal):", error);
+    }
+}
 
 async function testMessageThread() {
-    console.log("🧪 测试 FileBox 消息历史功能...\n");
-    
-    // 动态导入 ES 模块
-    const { FileBoxService } = await import('./build/test-exports.js');
-    
-    // 设置配置
-    FileBoxService.setConfig(config);
+    console.log("🧪 测试 FileBox 消息历史功能（新配置格式）...\n");
     
     try {
-        // 1. QA Agent 发送初始 Bug Report
+        // Setup test environment
+        await setupTestEnvironment();
+        
+        // Dynamic import ES modules
+        const { ConfigService, AgentService, FileBoxService } = await import('./build/test-exports.js');
+        
+        // Test QA Agent side
         console.log("1️⃣ QA Agent 发送初始 Bug Report");
-        const result1 = await FileBoxService.sendMessage(
+        
+        // Change to QA agent directory
+        const originalCwd = process.cwd();
+        process.chdir(path.join(testDir, 'qa_repo'));
+        
+        // Create QA services
+        const qaConfigService = new ConfigService();
+        await qaConfigService.loadConfig();
+        const qaAgentService = new AgentService(qaConfigService);
+        const qaFileBox = new FileBoxService(qaConfigService, qaAgentService);
+        
+        const result1 = await qaFileBox.sendMessage(
             "dev_agent",
             "BR",
             "批量导入用户时页面卡死",
@@ -43,31 +95,33 @@ async function testMessageThread() {
         );
         console.log("✅", result1);
         
-        // 查看发送的消息 - 切换到dev_agent上下文
-        FileBoxService.setConfig({...config, current_agent_id: "dev_agent"});
-        const devInboxFiles = await FileBoxService.listMessages("inbox");
+        // Switch to Dev Agent side
+        console.log("\n2️⃣ Dev Agent 查看收件箱");
+        process.chdir(path.join(testDir, 'dev_repo'));
+        
+        // Create Dev services
+        const devConfigService = new ConfigService();
+        await devConfigService.loadConfig();
+        const devAgentService = new AgentService(devConfigService);
+        const devFileBox = new FileBoxService(devConfigService, devAgentService);
+        
+        const devInboxFiles = await devFileBox.listMessages("inbox");
         console.log("📥 Dev Agent inbox files:", devInboxFiles);
         
         if (devInboxFiles.length > 0) {
-            const messageContent = await fs.readFile(path.join("/tmp/dev_agent_mailbox/inbox", devInboxFiles[0]), 'utf-8');
+            const messageContent = await devFileBox.readMessage("inbox", devInboxFiles[0]);
             console.log("📄 Initial message content:\n", messageContent);
             console.log("\n" + "=".repeat(50) + "\n");
-        }
-        
-        // 2. Dev Agent 回复确认
-        console.log("2️⃣ Dev Agent 回复确认");
-        
-        // 首先切换到 dev_agent 的上下文
-        FileBoxService.setConfig({...config, current_agent_id: "dev_agent"});
-        
-        // 获取消息ID (从文件内容中提取)
-        if (devInboxFiles.length > 0) {
-            const messageContent = await fs.readFile(path.join("/tmp/dev_agent_mailbox/inbox", devInboxFiles[0]), 'utf-8');
+            
+            // 3. Dev Agent 回复确认
+            console.log("3️⃣ Dev Agent 回复确认");
+            
+            // Extract message ID from content
             const messageIdMatch = messageContent.match(/\*\*Message ID:\*\* (.+)/);
             const originalMessageId = messageIdMatch ? messageIdMatch[1] : null;
             
             if (originalMessageId) {
-                const result2 = await FileBoxService.sendMessage(
+                const result2 = await devFileBox.sendMessage(
                     "qa_agent",
                     "ACK", 
                     "已收到Bug报告",
@@ -78,28 +132,25 @@ async function testMessageThread() {
                 );
                 console.log("✅", result2);
                 
-                // 查看回复后的消息 - 切换到qa_agent上下文
-                FileBoxService.setConfig({...config, current_agent_id: "qa_agent"});
-                const qaInboxFiles = await FileBoxService.listMessages("inbox");
+                // Switch back to QA Agent to check reply
+                console.log("\n4️⃣ QA Agent 查看回复");
+                process.chdir(path.join(testDir, 'qa_repo'));
+                
+                const qaInboxFiles = await qaFileBox.listMessages("inbox");
                 console.log("📥 QA Agent inbox files:", qaInboxFiles);
                 
                 if (qaInboxFiles.length > 0) {
-                    const replyContent = await fs.readFile(path.join("/tmp/qa_agent_mailbox/inbox", qaInboxFiles[0]), 'utf-8');
+                    const replyContent = await qaFileBox.readMessage("inbox", qaInboxFiles[0]);
                     console.log("📄 Reply message content:\n", replyContent);
                     console.log("\n" + "=".repeat(50) + "\n");
-                }
-                
-                // 3. QA Agent 再次回复补充信息
-                console.log("3️⃣ QA Agent 再次回复补充信息");
-                
-                // 切换到 qa_agent 的上下文
-                FileBoxService.setConfig({...config, current_agent_id: "qa_agent"});
-                
-                const result3 = await FileBoxService.sendMessage(
-                    "dev_agent",
-                    "SU",
-                    "补充网络请求状态信息", 
-                    `经过进一步测试，补充网络请求状态信息：
+                    
+                    // 5. QA Agent 再次回复补充信息
+                    console.log("5️⃣ QA Agent 再次回复补充信息");
+                    const result3 = await qaFileBox.sendMessage(
+                        "dev_agent",
+                        "INFO",
+                        "补充网络请求状态信息", 
+                        `经过进一步测试，补充网络请求状态信息：
 
 1. 上传Excel文件的请求正常完成（POST /api/users/import/upload）
 2. 解析数据的请求成功（POST /api/users/import/parse）
@@ -110,25 +161,36 @@ async function testMessageThread() {
    - 但页面仍然卡住，没有更新UI
 
 补充观察：Chrome任务管理器显示该标签页的内存使用从正常的约200MB暴涨至1.2GB`,
-                    originalMessageId
-                );
-                console.log("✅", result3);
-                
-                // 查看最终的消息线程 - 切换到dev_agent上下文
-                FileBoxService.setConfig({...config, current_agent_id: "dev_agent"});
-                const finalDevInboxFiles = await FileBoxService.listMessages("inbox");
-                console.log("📥 Final Dev Agent inbox files:", finalDevInboxFiles);
-                
-                if (finalDevInboxFiles.length > 0) {
-                    const finalContent = await fs.readFile(path.join("/tmp/dev_agent_mailbox/inbox", finalDevInboxFiles[0]), 'utf-8');
-                    console.log("📄 Final message thread:\n", finalContent);
+                        originalMessageId
+                    );
+                    console.log("✅", result3);
+                    
+                    // Switch back to Dev Agent to check final message thread
+                    console.log("\n6️⃣ Dev Agent 查看最终消息线程");
+                    process.chdir(path.join(testDir, 'dev_repo'));
+                    
+                    const finalDevInboxFiles = await devFileBox.listMessages("inbox");
+                    console.log("📥 Final Dev Agent inbox files:", finalDevInboxFiles);
+                    
+                    if (finalDevInboxFiles.length > 0) {
+                        const finalContent = await devFileBox.readMessage("inbox", finalDevInboxFiles[0]);
+                        console.log("📄 Final message thread:\n", finalContent);
+                    }
                 }
             }
         }
         
+        // Restore original directory
+        process.chdir(originalCwd);
+        
+        console.log("\n✅ 测试完成！新的统一配置格式工作正常。");
+        
     } catch (error) {
         console.error("❌ 测试失败:", error);
+    } finally {
+        // Cleanup test environment
+        await cleanupTestEnvironment();
     }
 }
 
-testMessageThread(); 
+testMessageThread();

@@ -48,35 +48,45 @@ graph TB
 
 ### 2.3 配置系统
 
-每个MCP服务器实例通过环境变量`FILEBOX_CONFIG`进行配置：
+FileBox MCP的配置分为两部分：
+
+**统一配置文件 (`.filebox`)**: 这是一个JSON格式的配置文件，放置在每个项目的根目录下，用于定义当前项目的代理身份和所有参与通信的代理及其项目根目录。
 
 ```json
 {
-    "current_agent_id": "qa_agent",
+    "current_agent": "qa_agent",
     "agents": {
-        "qa_agent": {
-            "mailbox_path": "/tmp/qa_agent_mailbox"
-        },
-        "dev_agent": {
-            "mailbox_path": "/tmp/dev_agent_mailbox"
-        }
+        "qa_agent": "/path/to/qa_repo_root",
+        "frontend_agent": "/path/to/frontend_repo_root",
+        "dev_agent": "/path/to/dev_repo_root"
     }
 }
 ```
+
+**配置字段说明：**
+*   `current_agent`: 当前项目对应的代理ID，必须与`agents`配置中定义的代理ID之一匹配
+*   `agents`: 一个对象，键是代理ID（例如`qa_agent`），值是该代理所在项目的根目录的绝对路径
+
+**注意事项：**
+*   MCP Server启动时会加载此文件，因此路径必须正确且可访问
+*   MCP Server在处理消息时，会读取当前工作目录的`.filebox`文件来确定自身身份
+*   所有参与通信的代理都必须在`agents`配置中定义
 
 ## 3. 邮箱系统设计
 
 ### 3.1 目录结构
 
-每个代理的邮箱采用标准的目录结构：
+每个代理的邮箱都统一存放在其项目根目录下的`docs/mailbox/`目录中，并采用标准的子目录结构：
 
 ```
-/tmp/agent_mailbox/
+<repo_root>/docs/mailbox/
 ├── inbox/          # 收件箱 - 接收到的新消息
 ├── outbox/         # 发件箱 - 已发送的消息副本
 ├── done/           # 已完成 - 处理完成的消息
 └── cancel/         # 已取消 - 拒绝或取消的消息
 ```
+*   `<repo_root>`: 指的是代理所在项目的根目录，由`.filebox`配置文件中的`agents`字段配置。
+*   **注意**: 确保每个代理的项目根目录下存在`docs/mailbox/`及其子目录。
 
 ### 3.2 消息文件格式
 
@@ -140,10 +150,12 @@ FileBox MCP提供以下标准化工具：
 - `title` (必需): 消息标题
 - `content` (必需): 消息内容
 - `original_message_id` (可选): 回复的原始消息ID
+- `runAs` (可选): 指定发送者代理ID（覆盖默认的当前代理）
 
 **功能：**
 - 发送新消息：创建新的消息文件并发送给目标代理
 - 回复消息：在原消息线程中添加回复内容
+- 代理切换：使用runAs参数以指定代理身份发送消息
 
 ### 4.2 filebox_list_messages
 
@@ -151,6 +163,7 @@ FileBox MCP提供以下标准化工具：
 
 **参数：**
 - `box_type` (必需): 邮箱类型 (inbox, outbox, done, cancel)
+- `runAs` (可选): 指定代理ID（覆盖默认的当前代理）
 
 **返回：**
 消息文件名列表
@@ -162,6 +175,7 @@ FileBox MCP提供以下标准化工具：
 **参数：**
 - `box_type` (必需): 邮箱类型
 - `filename` (必需): 消息文件名
+- `runAs` (可选): 指定代理ID（覆盖默认的当前代理）
 
 **返回：**
 完整的消息内容（Markdown格式）
@@ -172,6 +186,7 @@ FileBox MCP提供以下标准化工具：
 
 **参数：**
 - `filename` (必需): 消息文件名
+- `runAs` (可选): 指定代理ID（覆盖默认的当前代理）
 
 **功能：**
 将消息从inbox移动到done目录
@@ -182,9 +197,61 @@ FileBox MCP提供以下标准化工具：
 
 **参数：**
 - `filename` (必需): 消息文件名
+- `runAs` (可选): 指定代理ID（覆盖默认的当前代理）
 
 **功能：**
 将消息从inbox移动到cancel目录
+
+### 4.6 runAs参数详解
+
+所有MCP工具都支持可选的`runAs`参数，实现动态代理身份切换：
+
+#### 使用场景
+
+1. **多代理单仓库**：一个项目包含多个团队（QA、Frontend、Backend）
+2. **跨角色协作**：AI需要在不同角色间切换处理任务
+3. **测试场景**：模拟多代理交互
+
+#### 配置示例
+
+```json
+{
+    "current_agent": "qa_agent",
+    "agents": {
+        "qa_agent": "/path/to/shared_repo",
+        "frontend_agent": "/path/to/shared_repo", 
+        "backend_agent": "/path/to/shared_repo"
+    }
+}
+```
+
+#### 邮箱目录自动分离
+
+当检测到多个代理共享同一项目根路径时，系统自动创建代理专用邮箱：
+
+```
+shared_repo/docs/mailbox/
+├── qa_agent/
+│   ├── inbox/
+│   ├── outbox/
+│   ├── done/
+│   └── cancel/
+├── frontend_agent/
+│   ├── inbox/
+│   ├── outbox/
+│   ├── done/
+│   └── cancel/
+└── backend_agent/
+    ├── inbox/
+    ├── outbox/
+    ├── done/
+    └── cancel/
+```
+
+#### 错误处理
+
+- 如果`runAs`指定的代理ID不存在于配置中，会抛出详细错误信息
+- 错误信息包含所有可用的代理ID列表
 
 ## 5. 消息流转机制
 
@@ -242,18 +309,15 @@ sequenceDiagram
 
 ### 7.1 MCP配置
 
-在MCP配置文件（如`~/.cursor/mcp.json`）中添加：
+在MCP配置文件（如`~/.cursor/mcp.json`）中添加FileBox MCP Server的配置。请确保`command`和`args`指向正确的`bun`可执行文件和`src/index.ts`路径。
 
 ```json
 {
   "mcpServers": {
-    "FileBox-QA-Agent": {
+    "FileBox-Server": {
       "command": "/path/to/bun",
       "type": "stdio",
       "args": ["/path/to/filebox-mcp/src/index.ts"],
-      "env": {
-        "FILEBOX_CONFIG": "{\"current_agent_id\":\"qa_agent\",\"agents\":{\"qa_agent\":{\"mailbox_path\":\"/tmp/qa_agent_mailbox\"},\"dev_agent\":{\"mailbox_path\":\"/tmp/dev_agent_mailbox\"}}}"
-      },
       "autoApprove": [
         "filebox_send_message",
         "filebox_list_messages",
@@ -265,6 +329,7 @@ sequenceDiagram
   }
 }
 ```
+*   **注意**: `env`字段不再需要`FILEBOX_CONFIG`，因为代理配置将通过`.filebox`文件加载。
 
 ### 7.2 构建和启动
 
@@ -301,10 +366,10 @@ mkdir -p /tmp/dev_agent_mailbox/{inbox,outbox,done,cancel}
 
 ### 8.3 关键特性
 
-1. **实例化架构**：每个代理运行独立的MCP服务器实例
-2. **配置隔离**：通过环境变量实现代理配置隔离
-3. **文件系统同步**：直接文件操作确保消息传递的可靠性
-4. **Markdown格式**：人类可读的消息格式
+1. **单一实例架构**：一个MCP服务器实例可服务于多个代理。
+2. **本地化配置**：通过`.filebox`文件在项目根目录识别当前代理身份。
+3. **文件系统同步**：直接文件操作确保消息传递的可靠性。
+4. **Markdown格式**：人类可读的消息格式。
 
 ## 9. 使用示例
 
@@ -368,9 +433,8 @@ await filebox_send_message({
 
 ### 11.1 当前限制
 
-1. **单机部署**：目前仅支持同一文件系统上的代理通信
-2. **文件锁定**：并发访问可能导致文件冲突
-3. **配置复杂性**：需要为每个代理配置独立的MCP服务器
+1. **单机部署**：目前仅支持同一文件系统上的代理通信。
+2. **文件锁定**：并发访问可能导致文件冲突。
 
 ### 11.2 最佳实践
 
@@ -431,4 +495,4 @@ FileBox MCP成功实现了基于文件系统的AI代理消息传递系统，通�
 
 FileBox MCP证明了文件系统作为AI代理通信介质的可行性，其简单性和可靠性为AI工具间的协作提供了新的思路。虽然当前实现相对简单，但其设计理念和架构为未来的扩展和改进奠定了良好的基础。
 
-通过持续的迭代和优化，FileBox MCP有望成为AI工具生态系统中重要的通信基础设施，推动AI辅助开发的进一步发展。 
+通过持续的迭代和优化，FileBox MCP有望成为AI工具生态系统中重要的通信基础设施，推动AI辅助开发的进一步发展。

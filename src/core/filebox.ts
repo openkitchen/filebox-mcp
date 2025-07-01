@@ -2,29 +2,46 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 
-interface MailboxConfig {
-    current_agent_id: string;
-    agents: {
-        [agentId: string]: {
-            mailbox_path: string;
-        };
-    };
-}
+import { ConfigService } from './config.js';
+import { AgentService } from './agent.js';
 
 export class FileBoxService {
-    private config: MailboxConfig;
+    private configService: ConfigService;
+    private agentService: AgentService;
 
-    constructor(config: MailboxConfig) {
-        this.config = config;
-        console.error(`[DEBUG] FileBoxService constructor - Agent ID: ${config.current_agent_id}`);
-        console.error(`[DEBUG] FileBoxService constructor - Config:`, JSON.stringify(config, null, 2));
+    constructor(configService: ConfigService, agentService: AgentService) {
+        this.configService = configService;
+        this.agentService = agentService;
+    }
+
+    private async getEffectiveAgentId(runAs?: string): Promise<string> {
+        if (runAs) {
+            // Validate that the runAs agent exists in configuration
+            const allAgents = this.configService.getAllAgentIds();
+            if (!allAgents.includes(runAs)) {
+                throw new Error(`Invalid runAs agent '${runAs}'. Available agents: ${allAgents.join(', ')}`);
+            }
+            return runAs;
+        }
+        return await this.agentService.getCurrentAgentId();
     }
 
     private async getMailboxPath(agentId: string): Promise<string> {
-        if (!this.config) {
-            throw new Error("Config not loaded");
+        const repoRootPath = this.configService.getAgentRootPath(agentId);
+        
+        // Check if multiple agents share the same repo root path
+        const allAgents = this.configService.getAllAgentIds();
+        const agentsInSameRepo = allAgents.filter(id => 
+            this.configService.getAgentRootPath(id) === repoRootPath
+        );
+        
+        if (agentsInSameRepo.length > 1) {
+            // Multiple agents in same repo, create agent-specific mailbox
+            return path.join(repoRootPath, 'docs', 'mailbox', agentId);
+        } else {
+            // Single agent in repo, use standard mailbox path
+            return path.join(repoRootPath, 'docs', 'mailbox');
         }
-        return this.config.agents[agentId].mailbox_path;
     }
 
     private createSlug(text: string): string {
@@ -93,8 +110,8 @@ export class FileBoxService {
         return { metadata, threadContent };
     }
 
-    async sendMessage(receiverId: string, msgType: string, title: string, content: string, originalMessageId?: string): Promise<string> {
-        const senderId = this.config.current_agent_id;
+    async sendMessage(receiverId: string, msgType: string, title: string, content: string, originalMessageId?: string, runAs?: string): Promise<string> {
+        const senderId = await this.getEffectiveAgentId(runAs);
         const timestamp = new Date().toISOString();
         const msgId = uuidv4();
         let filename: string;
@@ -188,8 +205,8 @@ export class FileBoxService {
         return "Message sent successfully";
     }
 
-    async listMessages(boxType: 'inbox' | 'outbox' | 'done' | 'cancel'): Promise<string[]> {
-        const agentId = this.config.current_agent_id;
+    async listMessages(boxType: 'inbox' | 'outbox' | 'done' | 'cancel', runAs?: string): Promise<string[]> {
+        const agentId = await this.getEffectiveAgentId(runAs);
         const mailboxPath = await this.getMailboxPath(agentId);
         const boxPath = path.join(mailboxPath, boxType);
         try {
@@ -199,8 +216,8 @@ export class FileBoxService {
         }
     }
 
-    async readMessage(boxType: 'inbox' | 'outbox' | 'done' | 'cancel', filename: string): Promise<string> {
-        const agentId = this.config.current_agent_id;
+    async readMessage(boxType: 'inbox' | 'outbox' | 'done' | 'cancel', filename: string, runAs?: string): Promise<string> {
+        const agentId = await this.getEffectiveAgentId(runAs);
         const mailboxPath = await this.getMailboxPath(agentId);
         const filePath = path.join(mailboxPath, boxType, filename);
         try {
@@ -210,8 +227,8 @@ export class FileBoxService {
         }
     }
 
-    async resolveMessage(filename: string): Promise<string> {
-        const agentId = this.config.current_agent_id;
+    async resolveMessage(filename: string, runAs?: string): Promise<string> {
+        const agentId = await this.getEffectiveAgentId(runAs);
         const mailboxPath = await this.getMailboxPath(agentId);
         const src = path.join(mailboxPath, 'inbox', filename);
         const dest = path.join(mailboxPath, 'done', filename);
@@ -220,8 +237,8 @@ export class FileBoxService {
         return "Message resolved";
     }
 
-    async rejectMessage(filename: string): Promise<string> {
-        const agentId = this.config.current_agent_id;
+    async rejectMessage(filename: string, runAs?: string): Promise<string> {
+        const agentId = await this.getEffectiveAgentId(runAs);
         const mailboxPath = await this.getMailboxPath(agentId);
         const src = path.join(mailboxPath, 'inbox', filename);
         const dest = path.join(mailboxPath, 'cancel', filename);
