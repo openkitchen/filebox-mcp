@@ -307,16 +307,40 @@ sequenceDiagram
 
 ## 7. 部署和配置
 
-### 7.1 MCP配置
+### 7.1 MCP配置（推荐方式）
 
-在MCP配置文件（如`~/.cursor/mcp.json`）中添加FileBox MCP Server的配置。请确保`command`和`args`指向正确的`bun`可执行文件和`src/index.ts`路径。
+在MCP配置文件中使用 `bunx` 直接从 GitHub 运行：
 
 ```json
 {
   "mcpServers": {
     "FileBox-Server": {
-      "command": "/path/to/bun",
-      "type": "stdio",
+      "command": "bunx",
+      "args": [
+        "-y",
+        "https://github.com/openkitchen/filebox-mcp"
+      ],
+      "autoApprove": [
+        "filebox_send_message",
+        "filebox_list_messages",
+        "filebox_read_message",
+        "filebox_resolve_message",
+        "filebox_reject_message"
+      ]
+    }
+  }
+}
+```
+
+### 7.2 开发环境配置
+
+如需修改源码或进行开发：
+
+```json
+{
+  "mcpServers": {
+    "FileBox-Server": {
+      "command": "bun",
       "args": ["/path/to/filebox-mcp/src/index.ts"],
       "autoApprove": [
         "filebox_send_message",
@@ -329,22 +353,29 @@ sequenceDiagram
   }
 }
 ```
-*   **注意**: `env`字段不再需要`FILEBOX_CONFIG`，因为代理配置将通过`.filebox`文件加载。
 
-### 7.2 构建和启动
+### 7.3 安装部署
 
+**用户安装**（推荐）：
 ```bash
+# 无需手动操作，bunx 会自动处理
+# 用户只需配置 MCP 并重启 AI 工具
+```
+
+**开发环境搭建**：
+```bash
+# 克隆仓库
+git clone https://github.com/openkitchen/filebox-mcp.git
+cd filebox-mcp
+
 # 安装依赖
 npm install
 
 # 构建项目
 npm run build
 
-# 创建邮箱目录
-mkdir -p /tmp/qa_agent_mailbox/{inbox,outbox,done,cancel}
-mkdir -p /tmp/dev_agent_mailbox/{inbox,outbox,done,cancel}
-
-# 重启AI工具以加载MCP服务器
+# 创建邮箱目录（自动）
+# 系统会自动创建 docs/mailbox/ 结构
 ```
 
 ## 8. 技术实现

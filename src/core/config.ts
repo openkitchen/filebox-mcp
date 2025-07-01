@@ -1,57 +1,97 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import * as os from 'os';
 
 export interface AgentConfig {
   [agentId: string]: string; // agentId -> repo_root_path
 }
 
 export interface FileBoxConfig {
-  current_agent: string;
+  current_agent?: string; // 在全局配置中可选
   agents: AgentConfig;
 }
 
 export class ConfigService {
   private config: FileBoxConfig | null = null;
-  private configPath: string;
+  private globalConfigPath: string;
+  private projectConfigPath: string;
+  private currentAgent: string | null = null;
 
   constructor(configFileName: string = '.filebox') {
-    // The .filebox file should be in the current working directory
-    this.configPath = path.join(process.cwd(), configFileName);
+    // 全局配置路径
+    this.globalConfigPath = path.join(os.homedir(), configFileName);
+    // 项目配置路径
+    this.projectConfigPath = path.join(process.cwd(), configFileName);
   }
 
   public async loadConfig(): Promise<FileBoxConfig> {
     if (this.config) {
       return this.config;
     }
+
+    let globalConfig: FileBoxConfig | null = null;
+    let projectConfig: FileBoxConfig | null = null;
+
+    // 1. 尝试加载全局配置
     try {
-      const content = await fs.readFile(this.configPath, 'utf-8');
-      this.config = JSON.parse(content) as FileBoxConfig;
-      
-      // Validate required fields
-      if (!this.config.current_agent) {
-        throw new Error('Missing required field: current_agent');
-      }
-      if (!this.config.agents || typeof this.config.agents !== 'object') {
-        throw new Error('Missing or invalid field: agents');
-      }
-      if (!this.config.agents[this.config.current_agent]) {
-        throw new Error(`Current agent '${this.config.current_agent}' not found in agents configuration`);
-      }
-      
-      console.log(`[ConfigService] Loaded config from: ${this.configPath}`);
-      console.log(`[ConfigService] Current agent: ${this.config.current_agent}`);
-      return this.config;
+      const globalContent = await fs.readFile(this.globalConfigPath, 'utf-8');
+      globalConfig = JSON.parse(globalContent) as FileBoxConfig;
+      console.log(`[ConfigService] Loaded global config from: ${this.globalConfigPath}`);
     } catch (error) {
-      console.error(`[ConfigService] Failed to load config from ${this.configPath}:`, error);
-      throw new Error(`Failed to load FileBox configuration. Ensure '${this.configPath}' exists and is valid JSON with required fields: current_agent, agents.`);
+      console.log(`[ConfigService] No global config found at: ${this.globalConfigPath}`);
     }
+
+    // 2. 尝试加载项目配置
+    try {
+      const projectContent = await fs.readFile(this.projectConfigPath, 'utf-8');
+      projectConfig = JSON.parse(projectContent) as FileBoxConfig;
+      console.log(`[ConfigService] Loaded project config from: ${this.projectConfigPath}`);
+    } catch (error) {
+      console.log(`[ConfigService] No project config found at: ${this.projectConfigPath}`);
+    }
+
+    // 3. 合并配置
+    if (projectConfig) {
+      // 如果有项目配置，使用项目配置
+      this.config = projectConfig;
+      this.currentAgent = projectConfig.current_agent || this.getProjectName();
+    } else if (globalConfig) {
+      // 如果只有全局配置，使用全局配置
+      this.config = globalConfig;
+      this.currentAgent = this.getProjectName(); // 使用项目名作为当前代理
+    } else {
+      // 没有任何配置文件
+      throw new Error(`No FileBox configuration found. Please create either '${this.globalConfigPath}' or '${this.projectConfigPath}' with valid JSON configuration.`);
+    }
+
+    // 4. 验证配置
+    if (!this.config.agents || typeof this.config.agents !== 'object') {
+      throw new Error('Missing or invalid field: agents');
+    }
+
+    // 5. 确保当前代理在配置中存在
+    if (!this.config.agents[this.currentAgent]) {
+      throw new Error(`Current agent '${this.currentAgent}' not found in agents configuration. Available agents: ${Object.keys(this.config.agents).join(', ')}`);
+    }
+
+    console.log(`[ConfigService] Current agent: ${this.currentAgent}`);
+    console.log(`[ConfigService] Available agents: ${Object.keys(this.config.agents).join(', ')}`);
+    
+    return this.config;
+  }
+
+  private getProjectName(): string {
+    // 使用当前目录名作为项目名/代理名
+    const projectName = path.basename(process.cwd());
+    console.log(`[ConfigService] Using project name as agent ID: ${projectName}`);
+    return projectName;
   }
 
   public getCurrentAgentId(): string {
-    if (!this.config) {
+    if (!this.config || !this.currentAgent) {
       throw new Error('Config not loaded. Call loadConfig() first.');
     }
-    return this.config.current_agent;
+    return this.currentAgent;
   }
 
   public getAgentRootPath(agentId: string): string {
@@ -60,7 +100,7 @@ export class ConfigService {
     }
     const rootPath = this.config.agents[agentId];
     if (!rootPath) {
-      throw new Error(`Agent '${agentId}' not found in configuration.`);
+      throw new Error(`Agent '${agentId}' not found in configuration. Available agents: ${Object.keys(this.config.agents).join(', ')}`);
     }
     return rootPath;
   }

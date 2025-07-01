@@ -1,0 +1,9 @@
+{
+  "agents": {
+    "qa_agent": "/path/to/qa_project",
+    "dev_agent": "/path/to/dev_project",
+    "frontend_agent": "/path/to/frontend_project",
+    "backend_agent": "/path/to/backend_project",
+    "filebox-mcp": "/Users/xiaowei/Workspace/lead-123/filebox-mcp"
+  }
+} 
