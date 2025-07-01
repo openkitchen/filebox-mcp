@@ -1,6 +1,6 @@
 {
   "name": "@openkitchen/filebox-mcp",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Model Context Protocol (MCP) Server for File-based Agent Messaging",
   "main": "build/index.js",
   "module": "build/index.js",
