@@ -36,25 +36,27 @@ export class ConfigService {
     try {
       const globalContent = await fs.readFile(this.globalConfigPath, 'utf-8');
       globalConfig = JSON.parse(globalContent) as FileBoxConfig;
-      console.log(`[ConfigService] Loaded global config from: ${this.globalConfigPath}`);
+      console.error(`[ConfigService] Loaded global config from: ${this.globalConfigPath}`);
     } catch (error) {
-      console.log(`[ConfigService] No global config found at: ${this.globalConfigPath}`);
+      console.error(`[ConfigService] No global config found at: ${this.globalConfigPath}`);
     }
 
     // 2. 尝试加载项目配置
     try {
       const projectContent = await fs.readFile(this.projectConfigPath, 'utf-8');
       projectConfig = JSON.parse(projectContent) as FileBoxConfig;
-      console.log(`[ConfigService] Loaded project config from: ${this.projectConfigPath}`);
+      console.error(`[ConfigService] Loaded project config from: ${this.projectConfigPath}`);
     } catch (error) {
-      console.log(`[ConfigService] No project config found at: ${this.projectConfigPath}`);
+      console.error(`[ConfigService] No project config found at: ${this.projectConfigPath}`);
     }
 
     // 3. 合并配置
     if (projectConfig) {
       // 如果有项目配置，使用项目配置
       this.config = projectConfig;
-      this.currentAgent = projectConfig.current_agent || this.getProjectName();
+      // 处理空字符串和 undefined
+      const projectAgent = projectConfig.current_agent?.trim();
+      this.currentAgent = projectAgent && projectAgent.length > 0 ? projectAgent : this.getProjectName();
     } else if (globalConfig) {
       // 如果只有全局配置，使用全局配置
       this.config = globalConfig;
@@ -70,12 +72,12 @@ export class ConfigService {
     }
 
     // 5. 确保当前代理在配置中存在
-    if (!this.config.agents[this.currentAgent]) {
+    if (!this.currentAgent || !this.config.agents[this.currentAgent]) {
       throw new Error(`Current agent '${this.currentAgent}' not found in agents configuration. Available agents: ${Object.keys(this.config.agents).join(', ')}`);
     }
 
-    console.log(`[ConfigService] Current agent: ${this.currentAgent}`);
-    console.log(`[ConfigService] Available agents: ${Object.keys(this.config.agents).join(', ')}`);
+    console.error(`[ConfigService] Current agent: ${this.currentAgent}`);
+    console.error(`[ConfigService] Available agents: ${Object.keys(this.config.agents).join(', ')}`);
     
     return this.config;
   }
@@ -83,7 +85,7 @@ export class ConfigService {
   private getProjectName(): string {
     // 使用当前目录名作为项目名/代理名
     const projectName = path.basename(process.cwd());
-    console.log(`[ConfigService] Using project name as agent ID: ${projectName}`);
+    console.error(`[ConfigService] Using project name as agent ID: ${projectName}`);
     return projectName;
   }
 
