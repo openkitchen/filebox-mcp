@@ -29,19 +29,9 @@ export class FileBoxService {
     private async getMailboxPath(agentId: string): Promise<string> {
         const repoRootPath = this.configService.getAgentRootPath(agentId);
         
-        // Check if multiple agents share the same repo root path
-        const allAgents = this.configService.getAllAgentIds();
-        const agentsInSameRepo = allAgents.filter(id => 
-            this.configService.getAgentRootPath(id) === repoRootPath
-        );
-        
-        if (agentsInSameRepo.length > 1) {
-            // Multiple agents in same repo, create agent-specific mailbox
-            return path.join(repoRootPath, 'docs', 'mailbox', agentId);
-        } else {
-            // Single agent in repo, use standard mailbox path
-            return path.join(repoRootPath, 'docs', 'mailbox');
-        }
+        // In centralized configuration, always use standard mailbox path
+        // Each agent should have its own repository/directory
+        return path.join(repoRootPath, 'docs', 'mailbox');
     }
 
     private createSlug(text: string): string {
