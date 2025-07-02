@@ -2,63 +2,78 @@
 
 const fs = require('fs').promises;
 const path = require('path');
+const os = require('os');
 
 // Mock test environment
 const testDir = '/tmp/filebox_test';
+const globalConfigPath = path.join(os.homedir(), '.filebox');
+const backupConfigPath = globalConfigPath + '.backup';
 
 // Create test environment
 async function setupTestEnvironment() {
+    console.log("🔧 设置测试环境...");
+    
+    // Backup existing global config if it exists
+    try {
+        await fs.access(globalConfigPath);
+        await fs.copyFile(globalConfigPath, backupConfigPath);
+        console.log("📦 已备份现有的全局配置文件");
+    } catch (error) {
+        // File doesn't exist, no need to backup
+    }
+    
     // Create test directories
     await fs.mkdir(testDir, { recursive: true });
     await fs.mkdir(path.join(testDir, 'qa_repo'), { recursive: true });
     await fs.mkdir(path.join(testDir, 'dev_repo'), { recursive: true });
 
-    // Create mailbox directories for both agents
+    // Create mailbox directories for both agents (will be created automatically by registerAgent)
     for (const agent of ['qa_repo', 'dev_repo']) {
         for (const box of ['inbox', 'outbox', 'done', 'cancel']) {
             await fs.mkdir(path.join(testDir, agent, 'docs', 'mailbox', box), { recursive: true });
         }
     }
 
-    // Create .filebox config files for both agents
-    const qaConfig = {
-        current_agent: "qa_agent",
+    // Create centralized global config
+    const globalConfig = {
         agents: {
             qa_agent: path.join(testDir, 'qa_repo'),
             dev_agent: path.join(testDir, 'dev_repo')
         }
     };
 
-    const devConfig = {
-        current_agent: "dev_agent", 
-        agents: {
-            qa_agent: path.join(testDir, 'qa_repo'),
-            dev_agent: path.join(testDir, 'dev_repo')
-        }
-    };
-
-    await fs.writeFile(
-        path.join(testDir, 'qa_repo', '.filebox'),
-        JSON.stringify(qaConfig, null, 2)
-    );
-
-    await fs.writeFile(
-        path.join(testDir, 'dev_repo', '.filebox'),
-        JSON.stringify(devConfig, null, 2)
-    );
+    await fs.writeFile(globalConfigPath, JSON.stringify(globalConfig, null, 2));
+    console.log("✅ 已创建集中化配置文件:", globalConfigPath);
 }
 
 async function cleanupTestEnvironment() {
     try {
+        console.log("🧹 清理测试环境...");
+        
         // Remove test directories
         await fs.rm(testDir, { recursive: true, force: true });
+        
+        // Remove test global config
+        await fs.unlink(globalConfigPath);
+        
+        // Restore backup if it exists
+        try {
+            await fs.access(backupConfigPath);
+            await fs.copyFile(backupConfigPath, globalConfigPath);
+            await fs.unlink(backupConfigPath);
+            console.log("📦 已恢复原有的全局配置文件");
+        } catch (error) {
+            // No backup to restore
+        }
+        
+        console.log("✅ 测试环境清理完成");
     } catch (error) {
-        console.error("Cleanup error (non-fatal):", error);
+        console.error("⚠️ 清理错误 (非致命):", error.message);
     }
 }
 
 async function testMessageThread() {
-    console.log("🧪 测试 FileBox 消息历史功能（新配置格式）...\n");
+    console.log("🧪 测试 FileBox 消息历史功能（集中化配置）...\n");
     
     try {
         // Setup test environment
@@ -70,11 +85,11 @@ async function testMessageThread() {
         // Test QA Agent side
         console.log("1️⃣ QA Agent 发送初始 Bug Report");
         
-        // Change to QA agent directory
+        // Change to QA agent directory (current agent will be determined automatically)
         const originalCwd = process.cwd();
         process.chdir(path.join(testDir, 'qa_repo'));
         
-        // Create QA services
+        // Create QA services (no need to manually set current agent)
         const qaConfigService = new ConfigService();
         await qaConfigService.loadConfig();
         const qaAgentService = new AgentService(qaConfigService);
@@ -99,7 +114,7 @@ async function testMessageThread() {
         console.log("\n2️⃣ Dev Agent 查看收件箱");
         process.chdir(path.join(testDir, 'dev_repo'));
         
-        // Create Dev services
+        // Create Dev services (current agent determined by working directory)
         const devConfigService = new ConfigService();
         await devConfigService.loadConfig();
         const devAgentService = new AgentService(devConfigService);
@@ -180,13 +195,28 @@ async function testMessageThread() {
             }
         }
         
+        // Test agent registration functionality
+        console.log("\n7️⃣ 测试Agent注册功能");
+        process.chdir(originalCwd); // Back to original directory
+        
+        const testConfigService = new ConfigService();
+        
+        // Test registering a new agent
+        await testConfigService.registerAgent("test_agent", testDir);
+        console.log("✅ 成功注册新agent: test_agent");
+        
+        // List all agents
+        const allAgents = testConfigService.getAllAgentIds();
+        console.log("📋 所有已注册的agents:", allAgents);
+        
         // Restore original directory
         process.chdir(originalCwd);
         
-        console.log("\n✅ 测试完成！新的统一配置格式工作正常。");
+        console.log("\n✅ 测试完成！集中化配置系统工作正常。");
         
     } catch (error) {
         console.error("❌ 测试失败:", error);
+        console.error("Stack trace:", error.stack);
     } finally {
         // Cleanup test environment
         await cleanupTestEnvironment();

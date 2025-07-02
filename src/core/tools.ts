@@ -1,14 +1,42 @@
 import { FastMCP } from "fastmcp";
 import { z } from "zod";
 import { FileBoxService } from "./filebox.js";
+import { ConfigService } from "./config.js";
 
 /**
  * Register all tools with the MCP server
  * 
  * @param server The FastMCP server instance
  * @param fileboxService The FileBoxService instance
+ * @param configService The ConfigService instance
  */
-export function registerTools(server: FastMCP, fileboxService: FileBoxService) {
+export function registerTools(server: FastMCP, fileboxService: FileBoxService, configService: ConfigService) {
+  // Register agent tool
+  server.addTool({
+    name: "filebox_register_agent",
+    description: "Register a directory as an agent in the centralized configuration",
+    parameters: z.object({
+      agent_name: z.string().describe("Name of the agent to register"),
+      directory: z.string().describe("Directory path to register as agent (can be relative or absolute)")
+    }),
+    execute: async (params) => {
+      await configService.registerAgent(params.agent_name, params.directory);
+      return `Agent '${params.agent_name}' registered successfully with directory: ${params.directory}`;
+    }
+  });
+
+  // List agents tool
+  server.addTool({
+    name: "filebox_list_agents",
+    description: "List all registered agents from the centralized configuration",
+    parameters: z.object({}),
+    execute: async () => {
+      await configService.loadConfig();
+      const agents = configService.getAllAgentIds();
+      return JSON.stringify(agents);
+    }
+  });
+
   // Send message tool
   server.addTool({
     name: "filebox_send_message",

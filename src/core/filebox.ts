@@ -117,9 +117,6 @@ export class FileBoxService {
         let filename: string;
         let markdownContent: string;
         
-        // 调试信息
-        console.error(`[DEBUG] FileBox sendMessage - senderId: ${senderId}, receiverId: ${receiverId}`);
-
         if (originalMessageId) {
             // This is a reply to an existing message
             const receiverMailboxPath = await this.getMailboxPath(receiverId);

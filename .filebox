@@ -1,7 +1,0 @@
-{
-  "current_agent": "qa_agent",
-  "agents": {
-    "qa_agent": "docs/qa_agent",
-    "dev_agent": "docs/dev_agent"
-  }
-} 

@@ -8,8 +8,7 @@ export class AgentService {
   }
 
   public async getCurrentAgentId(): Promise<string> {
-    // Ensure config is loaded first
-    await this.configService.loadConfig();
-    return this.configService.getCurrentAgentId();
+    // 直接委托给ConfigService
+    return await this.configService.getCurrentAgentId();
   }
 }

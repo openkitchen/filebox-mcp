@@ -19,7 +19,7 @@ async function startServer(configService: ConfigService, agentService: AgentServ
 
     // Register all resources, tools, and prompts
     registerResources(server);
-    registerTools(server, fileboxService);
+    registerTools(server, fileboxService, configService);
     registerPrompts(server);
     
     // Log server information

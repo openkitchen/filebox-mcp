@@ -48,13 +48,12 @@ graph TB
 
 ### 2.3 配置系统
 
-FileBox MCP的配置分为两部分：
+FileBox MCP采用集中化配置方式：
 
-**统一配置文件 (`.filebox`)**: 这是一个JSON格式的配置文件，放置在每个项目的根目录下，用于定义当前项目的代理身份和所有参与通信的代理及其项目根目录。
+**统一配置文件 (`~/.filebox`)**: 这是一个JSON格式的配置文件，放置在用户主目录下，用于定义所有参与通信的代理及其项目根目录。
 
 ```json
 {
-    "current_agent": "qa_agent",
     "agents": {
         "qa_agent": "/path/to/qa_repo_root",
         "frontend_agent": "/path/to/frontend_repo_root",
@@ -64,12 +63,11 @@ FileBox MCP的配置分为两部分：
 ```
 
 **配置字段说明：**
-*   `current_agent`: 当前项目对应的代理ID，必须与`agents`配置中定义的代理ID之一匹配
 *   `agents`: 一个对象，键是代理ID（例如`qa_agent`），值是该代理所在项目的根目录的绝对路径
 
-**注意事项：**
-*   MCP Server启动时会加载此文件，因此路径必须正确且可访问
-*   MCP Server在处理消息时，会读取当前工作目录的`.filebox`文件来确定自身身份
+**Agent身份确定：**
+*   系统通过当前工作目录自动确定当前代理身份
+*   如果当前目录未注册为agent，需要使用 `filebox_register_agent` 工具进行注册
 *   所有参与通信的代理都必须在`agents`配置中定义
 
 ## 3. 邮箱系统设计
@@ -85,8 +83,8 @@ FileBox MCP的配置分为两部分：
 ├── done/           # 已完成 - 处理完成的消息
 └── cancel/         # 已取消 - 拒绝或取消的消息
 ```
-*   `<repo_root>`: 指的是代理所在项目的根目录，由`.filebox`配置文件中的`agents`字段配置。
-*   **注意**: 确保每个代理的项目根目录下存在`docs/mailbox/`及其子目录。
+*   `<repo_root>`: 指的是代理所在项目的根目录，由`~/.filebox`配置文件中的`agents`字段配置。
+*   **注意**: 使用 `filebox_register_agent` 工具注册agent时会自动创建邮箱目录结构。
 
 ### 3.2 消息文件格式
 
@@ -140,7 +138,29 @@ FileBox MCP的配置分为两部分：
 
 FileBox MCP提供以下标准化工具：
 
-### 4.1 filebox_send_message
+### 4.1 filebox_register_agent
+
+注册目录为agent。
+
+**参数：**
+- `agent_name` (必需): Agent名称
+- `directory` (必需): 要注册的目录路径（支持相对路径和绝对路径）
+
+**功能：**
+- 将目录路径解析为绝对路径
+- 更新集中配置文件 `~/.filebox`
+- 自动创建标准邮箱目录结构
+
+### 4.2 filebox_list_agents
+
+列出所有已注册的agent。
+
+**参数：** 无
+
+**返回：**
+所有已注册agent的名称列表
+
+### 4.3 filebox_send_message
 
 发送消息给其他代理。
 
@@ -157,7 +177,7 @@ FileBox MCP提供以下标准化工具：
 - 回复消息：在原消息线程中添加回复内容
 - 代理切换：使用runAs参数以指定代理身份发送消息
 
-### 4.2 filebox_list_messages
+### 4.4 filebox_list_messages
 
 列出指定邮箱中的消息。
 
@@ -168,7 +188,7 @@ FileBox MCP提供以下标准化工具：
 **返回：**
 消息文件名列表
 
-### 4.3 filebox_read_message
+### 4.5 filebox_read_message
 
 读取消息内容。
 
@@ -180,7 +200,7 @@ FileBox MCP提供以下标准化工具：
 **返回：**
 完整的消息内容（Markdown格式）
 
-### 4.4 filebox_resolve_message
+### 4.6 filebox_resolve_message
 
 标记消息为已解决。
 
@@ -191,7 +211,7 @@ FileBox MCP提供以下标准化工具：
 **功能：**
 将消息从inbox移动到done目录
 
-### 4.5 filebox_reject_message
+### 4.7 filebox_reject_message
 
 拒绝消息。
 
@@ -202,7 +222,7 @@ FileBox MCP提供以下标准化工具：
 **功能：**
 将消息从inbox移动到cancel目录
 
-### 4.6 runAs参数详解
+### 4.8 runAs参数详解
 
 所有MCP工具都支持可选的`runAs`参数，实现动态代理身份切换：
 
@@ -216,7 +236,6 @@ FileBox MCP提供以下标准化工具：
 
 ```json
 {
-    "current_agent": "qa_agent",
     "agents": {
         "qa_agent": "/path/to/shared_repo",
         "frontend_agent": "/path/to/shared_repo", 
@@ -309,18 +328,19 @@ sequenceDiagram
 
 ### 7.1 MCP配置（推荐方式）
 
-在MCP配置文件中使用 `bunx` 直接从 GitHub 运行：
+在MCP配置文件中使用 `npx` 直接运行：
 
 ```json
 {
   "mcpServers": {
     "FileBox-Server": {
-      "command": "bunx",
+      "command": "npx",
       "args": [
-        "-y",
-        "https://github.com/openkitchen/filebox-mcp"
+        "@openkitchen/filebox-mcp"
       ],
       "autoApprove": [
+        "filebox_register_agent",
+        "filebox_list_agents",
         "filebox_send_message",
         "filebox_list_messages",
         "filebox_read_message",
@@ -343,6 +363,8 @@ sequenceDiagram
       "command": "bun",
       "args": ["/path/to/filebox-mcp/src/index.ts"],
       "autoApprove": [
+        "filebox_register_agent",
+        "filebox_list_agents",
         "filebox_send_message",
         "filebox_list_messages",
         "filebox_read_message",
@@ -358,7 +380,7 @@ sequenceDiagram
 
 **用户安装**（推荐）：
 ```bash
-# 无需手动操作，bunx 会自动处理
+# 无需手动操作，npx 会自动处理
 # 用户只需配置 MCP 并重启 AI 工具
 ```
 
@@ -374,8 +396,8 @@ npm install
 # 构建项目
 npm run build
 
-# 创建邮箱目录（自动）
-# 系统会自动创建 docs/mailbox/ 结构
+# 注册agent（自动创建邮箱目录）
+# 通过MCP工具进行注册，无需手动创建
 ```
 
 ## 8. 技术实现
@@ -392,19 +414,37 @@ npm run build
 
 - `src/core/filebox.ts` - 核心FileBox服务实现
 - `src/core/tools.ts` - MCP工具定义
+- `src/core/config.ts` - 集中化配置服务
 - `src/server/server.ts` - MCP服务器启动逻辑
 - `src/index.ts` - 应用入口点
 
 ### 8.3 关键特性
 
-1. **单一实例架构**：一个MCP服务器实例可服务于多个代理。
-2. **本地化配置**：通过`.filebox`文件在项目根目录识别当前代理身份。
-3. **文件系统同步**：直接文件操作确保消息传递的可靠性。
-4. **Markdown格式**：人类可读的消息格式。
+1. **集中化配置**：单一配置文件管理所有agent定义。
+2. **自动注册**：通过MCP工具动态注册agent。
+3. **路径自动解析**：支持相对路径和绝对路径输入。
+4. **邮箱自动创建**：注册时自动创建标准邮箱目录结构。
+5. **智能身份识别**：根据当前目录自动确定agent身份。
 
 ## 9. 使用示例
 
-### 9.1 发送Bug报告
+### 9.1 注册Agent
+
+```javascript
+// 注册当前目录为QA agent
+await filebox_register_agent({
+    agent_name: "qa_agent",
+    directory: "."
+});
+
+// 注册其他项目目录
+await filebox_register_agent({
+    agent_name: "dev_agent",
+    directory: "/path/to/dev_project"
+});
+```
+
+### 9.2 发送Bug报告
 
 ```javascript
 await filebox_send_message({
@@ -424,7 +464,7 @@ await filebox_send_message({
 });
 ```
 
-### 9.2 回复确认
+### 9.3 回复确认
 
 ```javascript
 await filebox_send_message({
@@ -452,6 +492,7 @@ await filebox_send_message({
 3. **可读性**：人类可读的Markdown格式
 4. **标准化**：基于MCP协议的标准化接口
 5. **去中心化**：无需中央服务器
+6. **集中管理**：统一的agent配置管理
 
 ### 10.2 实用特性
 
@@ -459,6 +500,7 @@ await filebox_send_message({
 2. **强分割符**：清晰的消息边界
 3. **文件名保持**：回复时不改变文件名
 4. **自动化处理**：支持消息状态管理
+5. **动态注册**：运行时注册agent
 
 ## 11. 限制和注意事项
 
@@ -470,8 +512,9 @@ await filebox_send_message({
 ### 11.2 最佳实践
 
 1. **重启要求**：代码修改后需要重新构建并重启AI工具
-2. **路径配置**：确保所有代理使用一致的邮箱路径配置
+2. **路径配置**：确保所有代理使用一致的路径配置
 3. **权限管理**：确保文件系统权限正确设置
+4. **Agent注册**：使用MCP工具注册agent，确保配置正确
 
 ## 12. 未来改进
 
@@ -503,6 +546,7 @@ await filebox_send_message({
 - **权限错误**：处理文件系统权限问题
 - **格式错误**：处理消息格式解析错误
 - **配置错误**：验证MCP配置的正确性
+- **Agent未注册**：提供清晰的注册指导
 
 ### 13.3 性能考虑
 
@@ -513,17 +557,18 @@ await filebox_send_message({
 
 ## 14. 总结
 
-FileBox MCP成功实现了基于文件系统的AI代理消息传递系统，通过标准的MCP协议为AI工具提供了结构化的通信能力。系统采用邮件线程格式，支持消息的发送、回复、处理和状态管理，为AI工具间的协作提供了可靠的基础设施。
+FileBox MCP成功实现了基于文件系统的AI代理消息传递系统，通过标准的MCP协议为AI工具提供了结构化的通信能力。系统采用集中化配置和邮件线程格式，支持消息的发送、回复、处理和状态管理，为AI工具间的协作提供了可靠的基础设施。
 
 ### 14.1 关键成就
 
 1. **标准化接口**：基于MCP协议实现标准化的消息传递工具
-2. **邮件线程格式**：创新的消息格式设计，支持清晰的对话历史
-3. **文件系统集成**：简单可靠的文件系统存储机制
-4. **实例化架构**：灵活的多代理支持架构
+2. **集中化配置**：统一的agent配置管理机制
+3. **动态注册**：运行时agent注册和管理
+4. **邮件线程格式**：创新的消息格式设计，支持清晰的对话历史
+5. **文件系统集成**：简单可靠的文件系统存储机制
 
 ### 14.2 技术价值
 
-FileBox MCP证明了文件系统作为AI代理通信介质的可行性，其简单性和可靠性为AI工具间的协作提供了新的思路。虽然当前实现相对简单，但其设计理念和架构为未来的扩展和改进奠定了良好的基础。
+FileBox MCP证明了文件系统作为AI代理通信介质的可行性，其简单性和可靠性为AI工具间的协作提供了新的思路。集中化配置和动态注册机制大大简化了系统的部署和管理，为未来的扩展和改进奠定了良好的基础。
 
 通过持续的迭代和优化，FileBox MCP有望成为AI工具生态系统中重要的通信基础设施，推动AI辅助开发的进一步发展。

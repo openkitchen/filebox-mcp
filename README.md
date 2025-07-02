@@ -27,6 +27,8 @@ Edit the `~/.cursor/mcp.json` file:
         "@openkitchen/filebox-mcp"
       ],
       "autoApprove": [
+        "filebox_register_agent",
+        "filebox_list_agents",
         "filebox_send_message",
         "filebox_list_messages", 
         "filebox_read_message",
@@ -54,11 +56,28 @@ Edit the `~/.config/claude/mcp.json` file (macOS/Linux) or `%APPDATA%\Claude\mcp
 }
 ```
 
-#### 1.3 Configuration Files
+#### 1.3 Agent Registration
 
-FileBox MCP supports two configuration modes:
+FileBox MCP uses a centralized configuration approach. All agent definitions are stored in a single `~/.filebox` file in your home directory.
 
-**Global Configuration** (recommended for multiple projects):
+**Register agents using the MCP tool**:
+After configuring the MCP server, you can register agents directly through the AI tool:
+
+```javascript
+// Register current directory as an agent
+filebox_register_agent({
+  agent_name: "qa_agent",
+  directory: "."  // or any absolute/relative path
+})
+
+// Register other project directories
+filebox_register_agent({
+  agent_name: "dev_agent", 
+  directory: "/path/to/dev_project"
+})
+```
+
+**Manual configuration** (alternative):
 Create `~/.filebox` file in your home directory:
 
 ```json
@@ -72,43 +91,13 @@ Create `~/.filebox` file in your home directory:
 }
 ```
 
-**Project Configuration** (for single project):
-Create `.filebox` file in your project root directory:
-
-```json
-{
-  "current_agent": "qa_agent",
-  "agents": {
-    "qa_agent": "/path/to/qa_repo_root",
-    "dev_agent": "/path/to/dev_repo_root",
-    "frontend_agent": "/path/to/frontend_repo_root",
-    "backend_agent": "/path/to/backend_repo_root"
-  }
-}
-```
-
-You can refer to the `.filebox.example` file in the project.
-
 **Configuration Notes:**
-- `current_agent`: Current project's agent identifier (optional in global config)
 - `agents`: Mapping of all participating agents and their project root directory paths
-- `.filebox` file must be placed in the project root directory
-- `current_agent` must exist in the `agents` configuration
-- Paths must be absolute paths pointing to each agent project's root directory
-- If no project `.filebox` exists, the current directory name will be used as the agent ID
+- All paths must be absolute paths pointing to each agent project's root directory
+- The system automatically determines the current agent based on the current working directory
+- If the current directory is not registered, you'll need to use `filebox_register_agent` first
 
-#### 1.4 Create Mailbox Directories
-
-Create standard mailbox directory structure for each agent project:
-
-```bash
-# Create mailbox directories for each project
-mkdir -p /path/to/qa_repo/docs/mailbox/{inbox,outbox,done,cancel}
-mkdir -p /path/to/frontend_repo/docs/mailbox/{inbox,outbox,done,cancel}
-mkdir -p /path/to/backend_repo/docs/mailbox/{inbox,outbox,done,cancel}
-```
-
-#### 1.5 Restart AI Tools
+#### 1.4 Restart AI Tools
 
 Restart Cursor or other AI tools to load the MCP server configuration.
 
@@ -118,6 +107,8 @@ Restart Cursor or other AI tools to load the MCP server configuration.
 
 After installation and configuration, you can directly use FileBox MCP features in AI tools:
 
+- **Register agents**: Use the `filebox_register_agent` tool
+- **List agents**: Use the `filebox_list_agents` tool
 - **Send messages**: Use the `filebox_send_message` tool
 - **View inbox**: Use the `filebox_list_messages` tool
 - **Read messages**: Use the `filebox_read_message` tool
@@ -133,6 +124,9 @@ A: Message files are stored in the `docs/mailbox/` directory under the configure
 
 **Q: What message types are supported?**
 A: Supports BR (Bug Report), ACK (Acknowledgment), ER (Enhancement Request), INFO (Information), etc.
+
+**Q: How do I know which agents are registered?**
+A: Use the `filebox_list_agents` tool to see all registered agents.
 
 ## 📧 Message Format
 
@@ -221,18 +215,44 @@ filebox-mcp/
 
 FileBox MCP provides the following tools:
 
+- `filebox_register_agent` - Register a directory as an agent
+- `filebox_list_agents` - List all registered agents
 - `filebox_send_message` - Send messages
 - `filebox_list_messages` - List messages in specified agent's mailbox
 - `filebox_read_message` - Read message content
 - `filebox_resolve_message` - Mark message as resolved
 - `filebox_reject_message` - Reject message
 
-### runAs Parameter Support
+### Agent Registration
 
-All tools support an optional `runAs` parameter, allowing AI to execute operations with different agent identities within the same project:
+The `filebox_register_agent` tool allows you to register directories as agents:
 
 ```javascript
-// Send message with default agent identity (current_agent in configuration)
+// Register current directory
+filebox_register_agent({
+  agent_name: "my_agent",
+  directory: "."
+})
+
+// Register absolute path
+filebox_register_agent({
+  agent_name: "qa_agent", 
+  directory: "/path/to/qa_project"
+})
+
+// Register relative path
+filebox_register_agent({
+  agent_name: "frontend_agent",
+  directory: "../frontend_project"
+})
+```
+
+### runAs Parameter Support
+
+All messaging tools support an optional `runAs` parameter, allowing AI to execute operations with different agent identities:
+
+```javascript
+// Send message with default agent identity (determined by current directory)
 filebox_send_message({
   receiver_id: "frontend_agent",
   msg_type: "BR", 
@@ -257,7 +277,7 @@ filebox_list_messages({
 ```
 
 **runAs functionality is particularly suitable for:**
-- Code in the same repository containing multiple teams (such as QA + Frontend + Backend)
+- Multi-team projects where one person manages multiple agent roles
 - AI needing to switch between different roles to handle cross-team collaboration
 - Testing multi-agent interaction scenarios
 
@@ -291,3 +311,4 @@ docs/mailbox/
 - **Traceability**: Complete message history records
 - **Readability**: Human-readable Markdown format
 - **Extensibility**: Support for various message types and agents
+- **Centralized Configuration**: Single source of truth for all agent definitions
