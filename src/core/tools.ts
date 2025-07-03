@@ -37,6 +37,30 @@ export function registerTools(server: FastMCP, fileboxService: FileBoxService, c
     }
   });
 
+  // Unregister agent tool
+  server.addTool({
+    name: "filebox_unregister_agent",
+    description: "Unregister an agent from the centralized configuration",
+    parameters: z.object({
+      agent_name: z.string().describe("Name of the agent to unregister")
+    }),
+    execute: async (params) => {
+      await configService.unregisterAgent(params.agent_name);
+      return `Agent '${params.agent_name}' unregistered successfully`;
+    }
+  });
+
+  // Cleanup duplicate agents tool
+  server.addTool({
+    name: "filebox_cleanup_agents",
+    description: "Clean up duplicate agent registrations for the same directory",
+    parameters: z.object({}),
+    execute: async () => {
+      const result = await configService.cleanupDuplicateAgents();
+      return `Cleanup completed. Removed: ${result.removed.join(', ')}. Kept: ${result.kept.join(', ')}.`;
+    }
+  });
+
   // Send message tool
   server.addTool({
     name: "filebox_send_message",
